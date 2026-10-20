@@ -165,6 +165,23 @@ details summary{cursor:pointer;font-weight:600;font-size:13px}
       </label>
     </div>
 
+    <div style="margin-top:12px;padding:12px;background:#f8f9fa;border-radius:8px;">
+      <label style="font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;">
+        <input type="checkbox" id="optFixSize">
+        固定照片尺寸（公分）
+      </label>
+      <div style="font-size:12px;color:#666;margin:4px 0 8px;">所有照片依原圖比例縮放，不裁切、不變形。只填「寬」→ 高度依各圖比例自動計算；只填「高」同理；兩者都填 → 縮放到不超出該框（長邊為準）。</div>
+      <div id="fixSizeOpts" style="display:none;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:13px;">
+          寬
+          <input type="number" id="optFixW" min="0" step="0.1" value="4.5" style="border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:13px;width:70px"> cm
+          &nbsp;高
+          <input type="number" id="optFixH" min="0" step="0.1" value="" placeholder="自動" style="border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:13px;width:70px"> cm
+          <span style="font-size:11px;color:#888;">照片會自動依投影片寬度排列，放不下時換行、換頁</span>
+        </div>
+      </div>
+    </div>
+
     <div class="btn-row">
       <button class="btn btn-primary" id="btnGenerate">生成 PPT</button>
       <button class="btn btn-outline" id="btnAddMore">加入更多檔案</button>
@@ -259,6 +276,9 @@ fileInput.addEventListener('change', () => {
   fileInput.value = '';
 });
 $('btnGenerate').addEventListener('click', generatePPT);
+$('optFixSize').addEventListener('change', () => {
+  $('fixSizeOpts').style.display = $('optFixSize').checked ? 'block' : 'none';
+});
 $('btnAddMore').addEventListener('click', () => fileInput.click());
 $('btnReset').addEventListener('click', reset);
 
@@ -546,6 +566,100 @@ function pickGrid(n) {
   return { cols: c, rows: r };
 }
 
+// ============== Fixed-size (cm) layout ==============
+function getFixSettings() {
+  return {
+    on: $('optFixSize').checked,
+    w: Math.max(0, parseFloat($('optFixW').value) || 0),
+    h: Math.max(0, parseFloat($('optFixH').value) || 0)
+  };
+}
+
+// Place all images of one doc at a fixed cm size (aspect ratio preserved), flowing left→right, wrapping rows and pages.
+async function placeFixedDoc(pptx, doc, fix, slideW, slideH, onImg) {
+  var CM = 1 / 2.54;
+  var mx = 0.25, my = 0.5, mb = 0.15, gapX = 0.15, gapY = 0.12, headerH = 0.35, labelH = 0.22;
+  var availW = slideW - mx * 2;
+  var top = my + headerH - 0.15;
+  var availH = (slideH - mb) - top;
+  var maxH = availH - labelH;
+  var clampedCount = 0;
+
+  var items = doc.images.map(function(img) {
+    var ar = (img.w && img.h) ? img.w / img.h : 4 / 3;
+    var bw = fix.w * CM, bh = fix.h * CM, w, h;
+    if (bw && bh) { w = Math.min(bw, bh * ar); h = w / ar; }
+    else if (bw) { w = bw; h = w / ar; }
+    else { h = bh; w = h * ar; }
+    var sc = Math.min(1, availW / w, maxH / h);
+    if (sc < 1) { w *= sc; h *= sc; clampedCount++; }
+    return { img: img, w: w, h: h };
+  });
+  if (clampedCount > 0) log('⚠ ' + doc.name + ': ' + clampedCount + ' 張超出投影片範圍，已等比縮小', 'warn');
+
+  // Build pages -> rows
+  var pages = [], curRows = [], curRow = [], rowW = 0, rowH = 0, usedH = 0, EPS = 1e-6;
+  function flushRow() {
+    if (!curRow.length) return;
+    curRows.push({ items: curRow, w: rowW, h: rowH });
+    usedH += rowH + gapY;
+    curRow = []; rowW = 0; rowH = 0;
+  }
+  function flushPage() {
+    flushRow();
+    if (curRows.length) { pages.push(curRows); curRows = []; usedH = 0; }
+  }
+  items.forEach(function(it) {
+    var rh = it.h + labelH;
+    if (curRow.length) {
+      var fitsW = rowW + gapX + it.w <= availW + EPS;
+      var fitsH = usedH + Math.max(rowH, rh) <= availH + EPS;
+      if (!fitsW || !fitsH) flushRow();
+    }
+    if (!curRow.length && curRows.length && usedH + rh > availH + EPS) flushPage();
+    var aw = (curRow.length ? gapX : 0) + it.w;
+    curRow.push(it); rowW += aw; rowH = Math.max(rowH, rh);
+  });
+  flushPage();
+
+  // Render
+  var count = 0;
+  for (var pg = 0; pg < pages.length; pg++) {
+    var slide = pptx.addSlide();
+    slide.background = { color: 'FFFFFF' };
+    var label = doc.name + (pages.length > 1 ? '  (' + (pg + 1) + '/' + pages.length + ')' : '');
+    slide.addText(label, {
+      x: mx, y: 0.05, w: slideW - mx * 2, h: headerH,
+      fontSize: 11, bold: true, color: '333333', fontFace: 'Microsoft JhengHei', valign: 'middle'
+    });
+    slide.addShape(pptx.shapes.RECTANGLE, {
+      x: mx, y: my - 0.02, w: availW, h: 0.015, fill: { color: 'DDDDDD' }, line: { width: 0 }
+    });
+    var rows = pages[pg];
+    var maxRowW = 0;
+    rows.forEach(function(r) { if (r.w > maxRowW) maxRowW = r.w; });
+    var ox = mx + (availW - maxRowW) / 2;
+    var y = top;
+    for (var ri = 0; ri < rows.length; ri++) {
+      var x = ox;
+      for (var k = 0; k < rows[ri].items.length; k++) {
+        var it = rows[ri].items[k];
+        var b64 = await blobToBase64(it.img.blob);
+        slide.addImage({ data: b64, x: x, y: y, w: it.w, h: it.h });
+        slide.addText('#' + (doc.images.indexOf(it.img) + 1) + ' ' + it.img.name, {
+          x: x, y: y + it.h + 0.01, w: it.w, h: 0.2,
+          fontSize: 6, color: '888888', align: 'center', fontFace: 'Segoe UI'
+        });
+        x += it.w + gapX;
+        count++;
+        if (onImg) onImg();
+      }
+      y += rows[ri].h + gapY;
+    }
+  }
+  return count;
+}
+
 // ============== Generate PPT ==============
 async function generatePPT() {
   // Collect included images per doc
@@ -561,6 +675,12 @@ async function generatePPT() {
     return;
   }
 
+  var fixCheck = getFixSettings();
+  if (fixCheck.on && !fixCheck.w && !fixCheck.h) {
+    setStatus('已勾選「固定照片尺寸」，請至少填入寬或高（公分）', 'error');
+    return;
+  }
+
   setStep(2);
   $('btnGenerate').disabled = true;
   setStatus('正在生成 PPT...');
@@ -573,6 +693,8 @@ async function generatePPT() {
     pptx.title = 'SEM-EDS 圖片彙整';
 
     var addTitle = $('optTitle').checked;
+    var fix = getFixSettings();
+    if (fix.on) log('固定照片尺寸：寬 ' + (fix.w || '自動') + ' cm × 高 ' + (fix.h || '自動') + ' cm（依原圖比例）', 'ok');
     var slideW = 13.33;
     var slideH = 7.5;
 
@@ -626,6 +748,14 @@ async function generatePPT() {
       // === All images from this doc on grid slides ===
       var imgs = doc.images;
       var n = imgs.length;
+
+      if (fix.on) {
+        await placeFixedDoc(pptx, doc, fix, slideW, slideH, function() {
+          globalImgIdx++;
+          setProgress(Math.min(95, Math.round((globalImgIdx / totalSelected) * 95)));
+        });
+        continue;
+      }
 
       // Auto grid: pick cols x rows that best fills the slide
       var gridOpts = pickGrid(n);
