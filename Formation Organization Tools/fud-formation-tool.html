@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FUD 化成數據彙整</title>
+<style>
+:root{--bg:#f4f5f2;--ink:#1f2a2e;--mute:#66737a;--line:#d6dad4;--acc:#1d6b5e;--card:#fff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 "Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif}
+main{max-width:1500px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;margin:0 0 10px}
+.sub{color:var(--mute);margin:0 0 16px}
+section{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:14px 16px;margin-bottom:14px}
+.row{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
+label{display:inline-flex;gap:6px;align-items:center}
+input[type=text],input[type=number],select{font:inherit;padding:4px 6px;border:1px solid var(--line);border-radius:4px;background:#fff;max-width:200px}
+input[type=number]{width:70px}
+button,.btn{font:inherit;padding:6px 14px;border:1px solid var(--acc);background:var(--acc);color:#fff;border-radius:4px;cursor:pointer}
+button.ghost{background:#fff;color:var(--acc)}
+button:focus-visible,.btn:focus-within,input:focus-visible,select:focus-visible{outline:2px solid #e0a100;outline-offset:2px}
+.btn input{position:absolute;opacity:0;width:1px;height:1px}
+.wrap{overflow:auto;max-height:420px;border:1px solid var(--line);border-radius:4px;margin-top:10px}
+table{border-collapse:collapse;width:100%;white-space:nowrap}
+th,td{padding:3px 9px;border-bottom:1px solid #eceee9;text-align:left}
+th{position:sticky;top:0;background:#eef1ec;font-weight:600}
+td.n{text-align:right;font-variant-numeric:tabular-nums}
+.cols{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:8px}
+.note{color:var(--mute);font-size:13px}.err{color:#b3261e}
+canvas{display:block;max-width:100%}
+details{margin-top:8px}summary{cursor:pointer;color:var(--acc)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(500px,1fr));gap:12px}
+#charts canvas{border:1px solid var(--line);border-radius:4px;max-width:100%}
+.stg{display:flex;gap:6px;align-items:center;margin:2px 0;min-width:300px}
+.stg input[type=text]{width:130px}
+#drop{border:1px dashed var(--acc);border-radius:4px;padding:8px 10px;margin:10px 0 0}
+#drop.on{background:#e3f1ed}
+.top{display:grid;grid-template-columns:minmax(320px,570px) minmax(0,1fr);gap:14px;align-items:start;margin-bottom:14px}
+.top>section{margin:0;min-width:0}
+.top>section:nth-child(3){grid-column:2;grid-row:1/span 2}
+@media(max-width:960px){.top{grid-template-columns:1fr}.top>section:nth-child(3){grid-column:auto;grid-row:auto}}
+textarea{width:100%;font:12px/1.4 ui-monospace,Consolas,monospace;padding:6px;border:1px solid var(--line);border-radius:4px;resize:vertical}
+.yr{font-size:12px;color:var(--mute);margin:3px 0 0 4px}.yr input{width:78px}
+#thp input{width:84px}
+.gi{display:flex;gap:6px;align-items:center}
+#glist{max-height:190px;overflow:auto;margin-top:8px}
+#cells{max-height:130px;overflow:auto;margin-top:4px}
+.xl{width:auto}
+.xl th,.xl td{border:1px solid #e1e5df;padding:0}
+.xl th{padding:3px 4px;text-align:center;font-size:12px}
+.xl input{width:100%;min-width:56px;border:0;border-radius:0;padding:4px 6px;font:inherit;background:transparent;font-variant-numeric:tabular-nums}
+.xl input:focus{outline:2px solid var(--acc);outline-offset:-2px;background:#fff}
+.xl input.bad{background:#fdecea}
+.xl .rn{background:#eef1ec;color:var(--mute);text-align:center;padding:0 6px;font-size:12px}
+.xl td:nth-child(2) input{min-width:122px}
+.xl .st{padding:0 6px;font-size:12px;color:var(--mute);max-width:84px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.xl button.x{padding:0 6px;font-size:12px;border:0;background:transparent;color:var(--mute)}
+</style>
+</head>
+<body>
+<main>
+<h1>FUD 化成數據彙整</h1>
+<p class="sub">所有運算都在本機瀏覽器完成，不使用任何外部函式庫或網路。</p>
+
+<div class="top">
+<section>
+  <h2>1. 載入資料夾</h2>
+  <div class="row">
+    <label class="btn">加入資料夾<input type="file" id="pick" webkitdirectory multiple></label>
+    <button class="ghost" id="clear">清除全部</button>
+    <button id="sv">儲存暫存檔</button>
+    <label class="btn">載入暫存檔<input type="file" id="ld" accept=".fudsess"></label>
+    <label>取樣間隔(秒)<input type="number" id="dt" value="30" min="1"></label>
+    <label>電芯號碼取檔名前<input type="number" id="cl" value="15" min="1">碼</label>
+    <span class="note" id="stat"></span>
+  </div>
+  <p class="note" id="drop">載入多個資料夾：① 在檔案總管選取多個工單資料夾，一起拖進這個頁面（任何位置都可以放開）；② 或按「加入資料夾」，可重複加入，也可直接選包含全部工單資料夾的上層資料夾。每個含 .fud 的資料夾視為一個工單。暫存檔會保存目前所有資料與設定，下次載入（或直接拖進頁面）即可還原，之後仍可繼續加入新工單、勾選要顯示的工單。</p>
+  <div id="glist"></div>
+  <details><summary>解析診斷（每個檔案的表頭與筆數）</summary><div class="wrap"><table id="diag"></table></div></details>
+</section>
+
+<section>
+  <h2>2. 手動輸入（BF / AF 的 ACIR・OCV）</h2>
+  <p class="note">像 Excel 一樣使用：點選儲存格後直接貼上（可一次貼多列多欄，會從點選位置往右下填入，列數自動延伸）。ACIR 請填 ohm，彙整表會自動以 mΩ 呈現。Enter／↓ 往下，Tab 往右，Delete 清除儲存格。</p>
+  <div class="row" style="margin-bottom:6px"><button class="ghost" id="irmore">＋ 增加 20 列</button><button class="ghost" id="irclr">清除全部輸入</button><span class="note" id="ircnt"></span></div>
+  <div class="wrap" style="max-height:380px"><table id="irgrid" class="xl"></table></div>
+</section>
+<section>
+  <h2>3. 彙整結果</h2>
+  <div class="row">
+    <span class="note">一個檔案一列，欄位依充放電階段（Action）排列。勾選要輸出的數值：</span>
+    <button id="csv">下載 CSV</button>
+    <button class="ghost" id="copy">複製（可貼進 Excel）</button>
+  </div>
+  <div class="cols" id="colsel"></div>
+  <details open><summary>階段命名／顯示（Action → 自訂名稱）</summary>
+    <div class="cols" id="stages"></div>
+    <p class="note">左邊勾選＝輸出該階段（Rest 預設不勾）；右邊填自訂名稱，留空則沿用 Action 原名。設定會記在這台電腦的瀏覽器。</p></details>
+  <details open><summary>計算欄位（例：庫倫效率）</summary>
+    <div id="calc"></div><button class="ghost" id="addc">＋ 新增計算欄位</button>
+    <p class="note">公式用 [欄名] 引用上方表格的欄位標題，例：[D0]/([C0-CC1]+[C0-CV])*100。支援 + − × ÷ 與括號，也可引用前面已建立的計算欄位。</p></details>
+  <p class="note" id="tinfo"></p>
+  <div class="wrap"><table id="tbl"></table></div>
+</section>
+
+</div>
+
+<section>
+  <div class="row" style="justify-content:space-between"><h2 style="margin:0">4. 理論容量與克容量回推</h2><button class="ghost" id="thb">收合 ▾</button></div>
+  <div id="thp" style="margin-top:10px">
+    <p class="note">理論容量(mAh) ＝ 有效面積 × CA CW × Active ratio × 克容量 ÷ 100000 × 並數（CA CW 以 mg/cm²、Active ratio 以 % 數字填入，例如 96）。預設列填一次即套用到全部工單，工單列留空就沿用預設，需要時可個別覆寫。</p>
+    <div class="wrap" style="max-height:300px"><table id="tht"></table></div>
+    <p class="note" style="margin-bottom:4px">實際克容量(mAh/g) ＝ 階段容量 ÷ (有效面積 × CA CW × Active ratio ÷ 100000 × 並數)，等同 階段容量 ÷ 理論容量 × 克容量。D0 → U0，依此類推，欄名不含單位，並自動加入下方圖表。要回推的階段（預設為放電階段）：</p>
+    <div class="cols" id="utsel"></div>
+    <label style="margin-top:6px"><input type="checkbox" id="utbl">U 欄位也加入彙整表格與 CSV</label>
+    <p class="note">計算欄位的公式也能直接引用 [理論容量]。</p>
+  </div>
+</section>
+
+<section>
+  <h2>5. 圖表</h2>
+  <div class="row">
+    <label>類型<select id="ctype">
+      <option value="gs">各階段一張：散佈圖（電芯序號 × 值）</option>
+      <option value="gb">各階段一張：箱型圖（依工單）</option>
+      <option value="xy">自訂 X–Y 散佈圖</option>
+      <option value="curve">原始曲線（時間–Y）</option>
+    </select></label>
+    <label id="lslot">每工單預留顆數（X 軸）<input type="number" id="slot" min="0" placeholder="0=連續"></label>
+    <label id="lx">X<select id="cx"></select></label>
+    <label id="ly">Y<select id="cy"></select></label>
+    <label id="lg">組別<select id="cg"></select></label>
+    <label id="ly2">第二 Y 軸<select id="cy2"></select></label>
+    <label>PPT 每頁<select id="ppn"><option value="1">1 張</option><option value="2">2 張</option><option value="4" selected>4 張</option></select></label>
+    <button id="ppt">一鍵輸出 PPT</button>
+    <span class="note">圖表雙擊可下載 PNG；每張圖下方可設定 Y 軸範圍。</span>
+  </div>
+  <div id="cellbox" style="margin-top:8px">
+    <div class="row" style="gap:8px"><b>電芯 Profile</b><button class="ghost" id="call">全選</button><button class="ghost" id="cnone">全不選</button><span class="note">勾選要畫出的電芯（≤8 條時以不同顏色並附圖例，否則依工單上色）</span></div>
+    <div class="cols" id="cells"></div>
+  </div>
+  <p class="note" style="margin:10px 0 2px">組別說明：圖表上顯示的名稱，預設為工單號碼，可改成 recipe 名稱。</p>
+  <div class="cols" id="gl"></div>
+  <div id="charts" style="margin-top:10px"></div>
+</section>
+
+<section>
+  <h2>6. 統計</h2>
+  <div class="row"><button class="ghost" id="copyMean">複製統計表</button><span class="note">統計項目：</span><span class="cols" id="statSel"></span></div>
+  <p class="note" style="margin:8px 0 2px">顯示的階段／欄位：</p>
+  <div class="cols" id="meanSel"></div>
+  <div class="wrap" style="max-height:380px"><table id="mean"></table></div>
+</section>
+</main>
+
+<script>
+const $=s=>document.querySelector(s);
+const PAL=['#1d6b5e','#c4572a','#3b6fb6','#b8860b','#7a4e9c','#2e8b57','#c0392b','#5d6d7e'];
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const isNum=v=>v!==''&&v!=null&&!isNaN(+v);
+let files=[],hdrs=[],sel=new Set(),cur={cols:[],rows:[]},numCols=[],cfg={},calcs=[],stageSig='',gSig='',meanData={cols:[],rows:[]},jobs=[];
+cfg={n:{},h:{},gl:{},yr:{},th:{d:{},g:{}},ut:{},mx:{},gx:{},cu:{},ir:{},irr:[],sk:['avg'],slot:''};
+try{const z=JSON.parse(localStorage.getItem('fudCfg')||'null');if(z){Object.assign(cfg,z.cfg||{});calcs=z.calcs||[]}}catch(e){}
+migIr();
+const save=()=>{try{localStorage.setItem('fudCfg',JSON.stringify({cfg,calcs}))}catch(e){}};
+
+/* 公式：[欄名] 取值，只允許數字與 + - * / ( ) */
+function evalF(f,get){
+  let bad=false;
+  const e=f.replace(/\[([^\]]+)\]/g,(_,x)=>{const v=get(x.trim());if(!isFinite(v)){bad=true;return'0'}return'('+v+')'});
+  if(bad||!/^[\d+\-*\/().\seE]*$/.test(e))return'';
+  try{const r=Function('return '+e)();return isFinite(r)?+r.toFixed(4):''}catch(x){return''}
+}
+const lab=g=>cfg.gl[g]||g;
+const groups=()=>[...new Set(cur.rows.map(r=>r[0]))];
+const vals=(i,k)=>cur.rows.filter(r=>r[0]===k&&isNum(r[i])).map(r=>+r[i]).sort((x,y)=>x-y);
+/* 理論容量(mAh)=有效面積×CA CW×Active ratio×克容量×並數 */
+const TH=[['a','有效面積(cm²)'],['cw','CA CW'],['ar','Active ratio(%)'],['gc','克容量(mAh/g)'],['np','並數']];
+function eff(g,k){const pick=v=>(v!==undefined&&isNum(v))?+v:NaN,o=pick((cfg.th.g[g]||{})[k]);return isFinite(o)?o:pick(cfg.th.d[k])}
+function actW(g){const a=eff(g,'a'),cw=eff(g,'cw'),ar=eff(g,'ar'),np=eff(g,'np');if(![a,cw,ar,np].every(isFinite))return NaN;return a*cw*ar/100000*np}
+function theo(g){const w=actW(g),gc=eff(g,'gc');return isFinite(w)&&isFinite(gc)?w*gc:NaN}
+function updTheory(gs){gs.forEach((g,i)=>{const e=$('#tc'+i);if(e){const t=theo(g);e.textContent=isFinite(t)?fmt(t):'—'}})}
+function renderTheory(gs){
+  const val=(g,k)=>{const v=g===''?cfg.th.d[k]:(cfg.th.g[g]||{})[k];return v===undefined?'':v};
+  const inp=(g,k,i)=>`<input type="number" step="any" data-g="${i}" data-k="${k}" value="${esc(val(g,k))}"${g===''?'':` placeholder="${esc(val('',k))}"`}>`;
+  $('#tht').innerHTML='<tr><th>工單</th>'+TH.map(t=>`<th>${t[1]}</th>`).join('')+'<th>理論容量(mAh)</th></tr>'+
+    `<tr><td>預設（套用全部）</td>${TH.map(t=>`<td>${inp('',t[0],'')}</td>`).join('')}<td></td></tr>`+
+    gs.map((g,i)=>`<tr><td>${esc(lab(g))}</td>${TH.map(t=>`<td>${inp(g,t[0],i)}</td>`).join('')}<td class="n" id="tc${i}"></td></tr>`).join('');
+  document.querySelectorAll('#tht input').forEach(c=>c.onchange=()=>{
+    const g=c.dataset.g===''?'':gs[+c.dataset.g],o=g===''?cfg.th.d:(cfg.th.g[g]=cfg.th.g[g]||{});
+    o[c.dataset.k]=c.value;save();refresh(false);
+  });
+  updTheory(gs);
+}
+function renderGL(gs){
+  $('#gl').innerHTML=gs.map((g,i)=>`<div class="stg"><span title="工單">${esc(g)}</span>→<input type="text" data-g="${i}" value="${esc(cfg.gl[g]||'')}" placeholder="${esc(g)}"></div>`).join('');
+  document.querySelectorAll('#gl input').forEach(c=>c.onchange=()=>{cfg.gl[gs[+c.dataset.g]]=c.value.trim();save();renderTheory(gs);draw()});
+}
+function renderStages(order){
+  order.forEach(k=>{if(!(k in cfg.h))cfg.h[k]=/^rest/i.test(k)});
+  $('#stages').innerHTML=order.map((k,i)=>`<div class="stg"><input type="checkbox" data-k="${i}"${cfg.h[k]?'':' checked'} title="輸出此階段"><span title="原始 Action">${esc(k)}</span>→<input type="text" data-n="${i}" value="${esc(cfg.n[k]||'')}" placeholder="自訂名稱"></div>`).join('');
+  document.querySelectorAll('#stages [data-k]').forEach(c=>c.onchange=()=>{cfg.h[order[+c.dataset.k]]=!c.checked;save();refresh(false)});
+  document.querySelectorAll('#stages [data-n]').forEach(c=>c.onchange=()=>{cfg.n[order[+c.dataset.n]]=c.value.trim();save();refresh(false)});
+}
+function renderCalc(){
+  $('#calc').innerHTML=calcs.map((c,i)=>`<div class="stg" style="min-width:0"><input type="text" data-cn="${i}" value="${esc(c.n)}" placeholder="欄名 例：庫倫效率(%)"><input type="text" data-cf="${i}" value="${esc(c.f)}" placeholder="[D0]/([C0-CC1]+[C0-CV])*100" style="width:380px;max-width:55vw"><button class="ghost" data-cd="${i}">刪除</button><span class="note" id="cs${i}"></span></div>`).join('');
+  document.querySelectorAll('#calc [data-cn]').forEach(c=>c.onchange=()=>{calcs[+c.dataset.cn].n=c.value.trim();save();refresh(false)});
+  document.querySelectorAll('#calc [data-cf]').forEach(c=>c.onchange=()=>{calcs[+c.dataset.cf].f=c.value.trim();save();refresh(false)});
+  document.querySelectorAll('#calc [data-cd]').forEach(c=>c.onclick=()=>{calcs.splice(+c.dataset.cd,1);save();renderCalc();refresh(false)});
+}
+
+function dec(b){try{return new TextDecoder('utf-8',{fatal:true}).decode(b)}catch(e){return new TextDecoder('big5').decode(b)}}
+
+/* 解析單一 fud：逗號分割 → 找 End Status 表頭 → 留下 End Status 非 0、非空白的列 */
+function parse(text,dt){
+  const L=text.replace(/^\uFEFF/,'').split(/\r?\n/).map(l=>l.split(',').map(s=>s.trim()));
+  const hi=L.findIndex(r=>r.some(c=>/end\s*status/i.test(c)));
+  if(hi<0)return{err:'找不到 End Status 欄位',hdr:[],data:[],end:[]};
+  const seen={};
+  const hdr=L[hi].map(h=>{if(!h)return'';seen[h]=(seen[h]||0)+1;return seen[h]>1?h+'_'+seen[h]:h});
+  const si=hdr.findIndex(h=>/end\s*status/i.test(h));
+  const ai=hdr.findIndex(h=>/^\s*action\s*$/i.test(h));
+  const data=L.slice(hi+1).filter(r=>r.length>=3&&r.some(c=>c!==''));
+  const end=[];
+  data.forEach((r,i)=>{
+    const s=r[si]??'',a=(r[ai]??'').trim();
+    if(s===''||(isNum(s)&&+s===0))return;
+    if(ai<0||a===''||/^action$/i.test(a))return;
+    const v={t_min:+(i*dt/60).toFixed(3),__a:a};
+    hdr.forEach((h,j)=>{if(h)v[h]=r[j]??''});
+    end.push(v);
+  });
+  return{hdr,si,ai,noAct:ai<0,data,end,hrow:hi+1};
+}
+
+function reparse(){
+  const dt=+$('#dt').value||30;
+  files.forEach(f=>Object.assign(f,parse(f.text,dt)));
+}
+
+async function addFiles(list){
+  const have=new Set(files.map(f=>f.key));
+  for(const fl of list){
+    if(/\.fudsess$/i.test(fl.name)){await loadSession(fl);continue}
+    if(!/\.fud$/i.test(fl.name))continue;
+    const p=(fl._p||fl.webkitRelativePath||fl.name).replace(/^\//,''),key=p+'|'+fl.size+'|'+fl.lastModified;
+    if(have.has(key))continue;have.add(key);
+    const ps=p.split('/');
+    files.push({key,path:p,group:ps.length>=2?ps[ps.length-2]:'(未分組)',base:fl.name.replace(/\.fud$/i,''),text:dec(await fl.arrayBuffer())});
+  }
+  reparse();refresh(true);
+}
+$('#pick').onchange=async e=>{const l=[...e.target.files];e.target.value='';await addFiles(l)};
+async function walk(en,out){
+  if(en.isFile){out.push(await new Promise(r=>en.file(f=>{f._p=en.fullPath;r(f)},()=>r(new File([],'x.tmp')))))}
+  else if(en.isDirectory){
+    const rd=en.createReader(),all=[];
+    for(;;){const b=await new Promise(r=>rd.readEntries(r,()=>r([])));if(!b.length)break;all.push(...b)}
+    for(const c of all)await walk(c,out);
+  }
+}
+window.addEventListener('dragover',e=>{e.preventDefault();$('#drop').classList.add('on')});
+window.addEventListener('dragleave',e=>{if(!e.relatedTarget)$('#drop').classList.remove('on')});
+window.addEventListener('drop',async e=>{
+  e.preventDefault();$('#drop').classList.remove('on');
+  const en=[...e.dataTransfer.items].map(i=>i.webkitGetAsEntry&&i.webkitGetAsEntry()).filter(Boolean),out=[];
+  for(const x of en)await walk(x,out);
+  await addFiles(out);
+});
+$('#clear').onclick=()=>{files=[];sel.clear();refresh(true)};
+$('#dt').onchange=()=>{reparse();refresh(true)};
+$('#cl').onchange=()=>refresh(false);
+['ctype','cx','cy','cy2','cg'].forEach(i=>$('#'+i).onchange=()=>{ui();draw()});
+window.addEventListener('resize',()=>draw());
+
+function refresh(hchg){
+  const nat=(a,b)=>a.localeCompare(b,'zh',{numeric:true});
+  files.sort((a,b)=>nat(a.group,b.group)||nat(a.base,b.base));
+  if(hchg){
+    const u=[],old=sel;
+    files.forEach(f=>f.hdr.forEach(h=>{if(h&&!u.includes(h)&&!/^\s*action\s*$|end\s*status/i.test(h))u.push(h)}));
+    const def=u.filter(h=>/^add\s*mah$/i.test(h));
+    hdrs=u;sel=old.size?new Set(u.filter(h=>old.has(h))):new Set(def.length?def:u.filter(h=>/^mah$/i.test(h)));
+    $('#colsel').innerHTML=u.map(h=>`<label><input type="checkbox" data-h="${esc(h)}"${sel.has(h)?' checked':''}>${esc(h)}</label>`).join('');
+    document.querySelectorAll('#colsel input').forEach(c=>c.onchange=()=>{c.checked?sel.add(c.dataset.h):sel.delete(c.dataset.h);build();fillSel();ui();draw()});
+    diag();
+  }
+  const ok=files.filter(f=>!f.err);
+  const gc={};files.forEach(f=>gc[f.group]=(gc[f.group]||0)+1);
+  const gk=Object.keys(gc);
+  $('#stat').textContent=files.length?`已載入 ${files.length} 個檔案，${gk.length} 個工單`:'尚未載入。';
+  $('#glist').innerHTML=gk.length?'<div class="row" style="gap:8px"><button class="ghost" id="gall">全選</button><button class="ghost" id="gnone">全不選</button><span class="note">勾選要納入的工單</span></div>'+
+    gk.map((k,i)=>`<label class="gi"><input type="checkbox" data-gi="${i}"${cfg.gx[k]?'':' checked'}>${esc(k)} (${gc[k]})</label>`).join(''):'';
+  document.querySelectorAll('#glist [data-gi]').forEach(c=>c.onchange=()=>{cfg.gx[gk[+c.dataset.gi]]=!c.checked;save();refresh(false)});
+  if(gk.length){
+    $('#gall').onclick=()=>{cfg.gx={};save();refresh(false)};
+    $('#gnone').onclick=()=>{gk.forEach(k=>cfg.gx[k]=true);save();refresh(false)};
+  }
+  build();fillSel();ui();draw();
+}
+
+function diag(){
+  $('#diag').innerHTML='<tr><th>工單</th><th>檔名</th><th>表頭列</th><th>資料筆數</th><th>階段數</th><th>階段順序（Action）</th></tr>'+
+    files.map(f=>(f.err||f.noAct)?`<tr><td>${esc(f.group)}</td><td>${esc(f.base)}</td><td colspan=4 class="err">${f.err||'找不到 Action 欄位。表頭：'+esc(f.hdr.filter(Boolean).join(' | '))}</td></tr>`:
+    `<tr><td>${esc(f.group)}</td><td>${esc(f.base)}</td><td class="n">${f.hrow}</td><td class="n">${f.data.length}</td><td class="n">${f.end.length}</td><td>${esc(f.end.map(r=>r.__a).join(' → '))}</td></tr>`).join('');
+}
+
+/* 一個檔案一列：工單號碼、電芯號碼、各階段（Action）的數值＋計算欄位＋利用率 */
+function build(){
+  const n=+$('#cl').value||15;
+  const ok=files.filter(f=>!f.err&&!f.noAct&&!cfg.gx[f.group]);
+  const hs=hdrs.filter(h=>sel.has(h)),order=[];
+  const items=ok.map(f=>{
+    const cnt={},m={};
+    f.end.forEach(r=>{const a=r.__a;cnt[a]=(cnt[a]||0)+1;const k=cnt[a]>1?a+'#'+cnt[a]:a;if(!order.includes(k))order.push(k);m[k]=r});
+    return{f,m};
+  });
+  const sig=order.join('|');if(sig!==stageSig){stageSig=sig;renderStages(order)}
+  const shown=order.filter(k=>!cfg.h[k]),nm=k=>cfg.n[k]||k;
+  const cols=['工單號碼','電芯號碼'];
+  shown.forEach(k=>hs.forEach(h=>cols.push(hs.length>1?nm(k)+' '+h:nm(k))));
+  const rows=items.map(({f,m})=>{
+    const row=[f.group,f.base.slice(0,n)];
+    shown.forEach(k=>hs.forEach(h=>row.push(m[k]?(m[k][h]??''):'')));
+    return row;
+  });
+  /* BF/AF ACIR・OCV（依電芯序號對應；ACIR 由 ohm 轉 mΩ） */
+  const irm={};cfg.irr.forEach(r=>{const id=(r[0]||'').trim();if(!id)return;const o=irm[id.slice(0,n).toLowerCase()]=irm[id.slice(0,n).toLowerCase()]||{};['ba','bo','aa','ao'].forEach((f,i)=>{const v=(r[i+1]||'').toString().trim();if(v!==''&&isNum(v))o[f]=v})});
+  const irv=(r,k)=>{const o=irm[String(r[1]).toLowerCase()],v=o?o[k]:'';return v===''||v===undefined?'':(k==='ba'||k==='aa'?+(+v*1000).toPrecision(6):+v)};
+  IRC.forEach(([k,nm2])=>{
+    if(!rows.some(r=>irv(r,k)!==''))return;
+    cols.push(nm2);rows.forEach(r=>r.push(irv(r,k)));
+  });
+  calcs.forEach((c,ci)=>{
+    if(!c.n||!c.f)return;
+    let okc=0;
+    rows.forEach(r=>{const v=evalF(c.f,x=>{if(x==='理論容量')return theo(r[0]);const j=cols.indexOf(x);return j<2?NaN:(r[j]===''||r[j]==null?NaN:+r[j])});if(v!=='')okc++;r.push(v)});
+    cols.push(c.n);
+    const sp=$('#cs'+ci);if(sp)sp.textContent=`有效 ${okc}/${rows.length} 筆`+(okc?'':'（請檢查欄名是否與表格標題完全相同）');
+  });
+  const nBase=cols.length;
+  /* 實際克容量 = (階段容量 ÷ 換算值) ÷ (有效面積×CA CW×Active ratio×並數)；D0 → U0 */
+  const mh=hs.find(h=>/mah/i.test(h));
+  const utk=shown.filter(k=>{const v=cfg.ut[k];return v===undefined?/\\D$/.test(k.replace(/#\d+$/,'')):v});
+  const un=k=>{const x=nm(k);return /^D/i.test(x)?'U'+x.slice(1):'U-'+x};
+  $('#utsel').innerHTML=shown.map((k,i)=>`<label><input type="checkbox" data-u="${i}"${utk.includes(k)?' checked':''}>${esc(nm(k))}</label>`).join('');
+  document.querySelectorAll('#utsel [data-u]').forEach(c=>c.onchange=()=>{cfg.ut[shown[+c.dataset.u]]=c.checked;save();refresh(false)});
+  if(mh)utk.forEach(k=>{
+    const j=cols.indexOf(hs.length>1?nm(k)+' '+mh:nm(k));if(j<0)return;
+    cols.push(un(k));
+    rows.forEach(r=>{const w=actW(r[0]),v=r[j];r.push(isNum(v)&&w>0?+(+v/w).toFixed(2):'')});
+  });
+  const nT=$('#utbl').checked?cols.length:nBase;
+  cur={cols,rows,nTable:nT};
+  const bad=files.filter(f=>f.err||f.noAct).length;
+  $('#tinfo').textContent=rows.length?`共 ${rows.length} 個電芯，${shown.length} 個階段，${nT} 欄`+(bad?`；有 ${bad} 個檔案無法整理（見上方解析診斷）`:''):'沒有資料。';
+  $('#tbl').innerHTML='<tr>'+cols.slice(0,nT).map(c=>`<th>${esc(c)}</th>`).join('')+'</tr>'+
+    rows.slice(0,2000).map(r=>'<tr>'+r.slice(0,nT).map(v=>`<td${isNum(v)?' class="n"':''}>${esc(v)}</td>`).join('')+'</tr>').join('');
+  numCols=cols.map((c,i)=>i).filter(i=>i>=2&&rows.some(r=>r[i]!=='')&&rows.every(r=>r[i]===''||isNum(r[i])));
+  const gs=groups(),sg=gs.join('|');
+  if(sg!==gSig){gSig=sg;renderGL(gs);renderTheory(gs)}else updTheory(gs);
+  renderIr();
+}
+
+function fillSel(){
+  const keep=id=>$('#'+id).value;
+  const px=keep('cx'),py=keep('cy'),pg=keep('cg');
+  const opt=i=>`<option value="${i}">${esc(cur.cols[i])}</option>`;
+  $('#cx').innerHTML=numCols.map(opt).join('');
+  $('#cy').innerHTML=numCols.map(opt).join('');
+  if(numCols.includes(+px))$('#cx').value=px;
+  if(numCols.includes(+py))$('#cy').value=py;
+  else if(numCols.length>1)$('#cy').value=numCols[1];
+  $('#cg').innerHTML='<option value="">全部</option>'+[...new Set(files.map(f=>f.group))].map(g=>`<option>${esc(g)}</option>`).join('');
+  if([...$('#cg').options].some(o=>o.value===pg))$('#cg').value=pg;
+}
+function ui(){
+  const t=$('#ctype').value;
+  $('#lslot').style.display=t==='gs'?'':'none';
+  $('#lx').style.display=t==='xy'?'':'none';
+  $('#ly').style.display=(t==='xy'||t==='curve')?'':'none';
+  $('#lg').style.display=t==='curve'?'':'none';
+  $('#ly2').style.display=t==='curve'?'':'none';
+  $('#cellbox').style.display=t==='curve'?'':'none';
+  if(t==='curve'){ // Y 改選原始欄位
+    const py=$('#cy').dataset.curve==='1'?$('#cy').value:'';
+    const hs=hdrs.filter(h=>h!=='t_min'&&!/end\s*status/i.test(h));
+    $('#cy').innerHTML=hs.map(h=>`<option>${esc(h)}</option>`).join('');
+    if(hs.includes(py))$('#cy').value=py;else{const d=hs.find(h=>/^v$/i.test(h));if(d)$('#cy').value=d}
+    $('#cy').dataset.curve='1';
+    const p2=$('#cy2').value;
+    $('#cy2').innerHTML='<option>無</option>'+hs.map(h=>`<option>${esc(h)}</option>`).join('');
+    if([...$('#cy2').options].some(o=>o.value===p2))$('#cy2').value=p2;
+    renderCells();
+  }else if($('#cy').dataset.curve==='1'){$('#cy').dataset.curve='';fillSel()}
+}
+
+/* ---------- 手動輸入：像 Excel 的表格（序號、BF/AF ACIR・OCV） ---------- */
+const IRC=[['ba','BF ACIR(mΩ)'],['bo','BF OCV'],['aa','AF ACIR(mΩ)'],['ao','AF OCV']];
+let irDirty=true,irN=20;
+const irBlank=r=>!r||r.every(x=>x===''||x==null);
+function migIr(){ // 舊版（依序號對應的物件）轉成列
+  if(!Array.isArray(cfg.irr))cfg.irr=[];
+  if(cfg.ir&&Object.keys(cfg.ir).length){
+    Object.entries(cfg.ir).forEach(([k,o])=>cfg.irr.push([k,o.ba??'',o.bo??'',o.aa??'',o.ao??'']));
+    cfg.ir={};
+  }
+}
+function irFill(r0,c0,txt){ // 從 (r0,c0) 往右下填入；回傳是否處理
+  const clean=txt.replace(/\r/g,'').replace(/\n+$/,'');
+  if(!(/[\t\n]/.test(clean)||(c0===0&&/[,，\s]/.test(clean.trim()))))return false;
+  const rows=clean.split('\n').map(l=>(l.indexOf('\t')>=0?l.split('\t'):l.trim().split(/[,，\s]+/)).map(x=>x.trim()));
+  if(c0===0&&rows.length&&rows[0].slice(1).some(x=>x!==''&&!isNum(x)))rows.shift(); // 略過標題列
+  rows.forEach((row,i)=>{
+    while(cfg.irr.length<=r0+i)cfg.irr.push(['','','','','']);
+    row.forEach((v,j)=>{if(c0+j<5)cfg.irr[r0+i][c0+j]=v});
+  });
+  return rows.length>0;
+}
+function buildGrid(focus){
+  let last=-1;cfg.irr.forEach((r,i)=>{if(!irBlank(r))last=i});
+  irN=Math.max(irN,last+11);
+  const hd=['序號','BF ACIR','BF OCV','AF ACIR','AF OCV'];
+  let h='<tr><th class="rn">#</th>'+hd.map(x=>`<th>${x}</th>`).join('')+'<th>對應工單</th><th></th></tr>';
+  for(let i=0;i<irN;i++){
+    const r=cfg.irr[i]||[];
+    h+=`<tr><td class="rn">${i+1}</td>`+[0,1,2,3,4].map(c=>`<td><input type="text" data-r="${i}" data-c="${c}" value="${esc(r[c]??'')}"></td>`).join('')+`<td class="st" id="irs${i}"></td><td class="rn"><button class="x" data-x="${i}" tabindex="-1" title="清除這一列">✕</button></td></tr>`;
+  }
+  $('#irgrid').innerHTML=h;
+  if(focus){const e=$('#irgrid input[data-r="'+focus[0]+'"][data-c="'+focus[1]+'"]');if(e)e.focus()}
+  irDirty=false;
+}
+function updIrStatus(){
+  const n=+$('#cl').value||15,have={};
+  cur.rows.forEach(r=>have[String(r[1]).toLowerCase()]=r[0]);
+  let cnt=0,miss=0;
+  cfg.irr.forEach((r,i)=>{
+    if(irBlank(r))return;
+    cnt++;
+    const id=(r[0]||'').trim(),g=id?have[id.slice(0,n).toLowerCase()]:undefined,e=$('#irs'+i);
+    if(id&&!g)miss++;
+    if(e){e.textContent=!id?'缺序號':(g?lab(g):'未對應');e.style.color=(!id||!g)?'#b3261e':''}
+  });
+  document.querySelectorAll('#irgrid input[data-c]').forEach(x=>x.classList.toggle('bad',+x.dataset.c>0&&x.value!==''&&!isNum(x.value)));
+  $('#ircnt').textContent=cnt?`已輸入 ${cnt} 筆`+(miss?`，${miss} 筆未對應到已載入電芯`:''):'';
+}
+function renderIr(){if(irDirty)buildGrid();updIrStatus()}
+const irCommit=t=>{const r=+t.dataset.r,c=+t.dataset.c;while(cfg.irr.length<=r)cfg.irr.push(['','','','','']);if(cfg.irr[r][c]!==t.value.trim()){cfg.irr[r][c]=t.value.trim();save();return true}return false};
+(function(){
+  const gr=$('#irgrid'),isCell=t=>t&&t.matches&&t.matches('input[data-r]');
+  gr.addEventListener('paste',e=>{
+    const t=e.target;if(!isCell(t))return;
+    const txt=(e.clipboardData||window.clipboardData).getData('text');
+    if(!txt||!irFill(+t.dataset.r,+t.dataset.c,txt))return; // 單一值：照常貼進該格
+    e.preventDefault();save();buildGrid([+t.dataset.r,+t.dataset.c]);refresh(false);
+  });
+  gr.addEventListener('change',e=>{if(isCell(e.target)&&irCommit(e.target))refresh(false)});
+  gr.addEventListener('keydown',e=>{
+    const t=e.target;if(!isCell(t))return;
+    const dr=(e.key==='Enter'||e.key==='ArrowDown')?1:e.key==='ArrowUp'?-1:0;
+    if(!dr)return;
+    e.preventDefault();
+    const ch=irCommit(t),r=Math.max(0,+t.dataset.r+dr),c=+t.dataset.c;
+    if(r>=irN){irN=r+11;buildGrid([r,c])}else{const nx=$('#irgrid input[data-r="'+r+'"][data-c="'+c+'"]');if(nx)nx.focus()}
+    if(ch)refresh(false);
+  });
+  gr.addEventListener('click',e=>{
+    const x=e.target.dataset&&e.target.dataset.x;if(x===undefined)return;
+    cfg.irr[+x]=['','','','',''];save();buildGrid();refresh(false);
+  });
+  $('#irmore').onclick=()=>{irN+=20;buildGrid();updIrStatus()};
+  $('#irclr').onclick=()=>{if(cfg.irr.some(r=>!irBlank(r))&&confirm('確定清除所有已輸入的 BF / AF 資料？')){cfg.irr=[];irN=20;save();buildGrid();refresh(false)}};
+})();
+function renderCells(){
+  const fg=$('#cg').value,n=+$('#cl').value||15;
+  const fl=files.filter(f=>!f.err&&!cfg.gx[f.group]&&(!fg||f.group===fg));
+  $('#cells').innerHTML=fl.map((f,i)=>`<label class="gi" title="${esc(f.group)}"><input type="checkbox" data-c="${i}"${cfg.cu[f.key]?'':' checked'}>${esc(f.base.slice(0,n))}</label>`).join('');
+  document.querySelectorAll('#cells input').forEach(c=>c.onchange=()=>{const f=fl[+c.dataset.c];if(c.checked)delete cfg.cu[f.key];else cfg.cu[f.key]=true;save();draw()});
+  $('#call').onclick=()=>{fl.forEach(f=>delete cfg.cu[f.key]);save();renderCells();draw()};
+  $('#cnone').onclick=()=>{fl.forEach(f=>cfg.cu[f.key]=true);save();renderCells();draw()};
+}
+
+/* ---------- 繪圖（純 canvas） ---------- */
+function tstep(a,b,n=6){
+  if(a===b){a-=1;b+=1}
+  const s=(b-a)/n,p=Math.pow(10,Math.floor(Math.log10(s))),f=s/p;
+  return (f<1.5?1:f<3?2:f<7?5:10)*p;
+}
+function ticks(a,b,n=6){
+  if(a===b){a-=1;b+=1}
+  const st=tstep(a,b,n),o=[];
+  for(let v=Math.ceil(a/st-1e-9)*st;v<=b+st*1e-9;v+=st)o.push(+v.toPrecision(12));
+  return o;
+}
+const q=(s,p)=>{const i=(s.length-1)*p,l=Math.floor(i);return s[l]+(s[Math.min(l+1,s.length-1)]-s[l])*(i-l)};
+const mean=a=>a.reduce((x,y)=>x+y,0)/a.length;
+const sd=a=>a.length>1?Math.sqrt(a.reduce((x,y)=>x+(y-mean(a))**2,0)/(a.length-1)):0;
+/* 一律以一般數字顯示（不用科學記號）：約 5 位有效數字，大數顯示整數，尾端 0 去除 */
+const fmt=v=>{
+  v=+v;if(!isFinite(v))return'';if(v===0)return'0';
+  const d=Math.max(0,Math.min(12,4-Math.floor(Math.log10(Math.abs(v)))));
+  let t=v.toFixed(d);if(t.indexOf('.')>=0)t=t.replace(/\.?0+$/,'');
+  return t==='-0'?'0':t;
+};
+/* 圖表座標軸用：整數部分加千分位，方便閱讀 */
+const fmtA=v=>fmt(v).replace(/^-?\d{4,}/,m=>m.replace(/\B(?=(\d{3})+(?!\d))/g,','));
+
+function plot(c,W,H,sp){
+  const d=sp.scale||window.devicePixelRatio||1;c.width=W*d;c.height=H*d;c.style.width=W+'px';c.style.height=H+'px';
+  const g=c.getContext('2d');g.setTransform(d,0,0,d,0,0);g.fillStyle='#fff';g.fillRect(0,0,W,H);
+  g.textBaseline='top';g.textAlign='left';g.fillStyle='#1f2a2e';g.font='bold 13px sans-serif';g.fillText(sp.title||'',12,8);g.font='12px sans-serif';
+  if(sp.empty){g.fillStyle='#66737a';g.textAlign='center';g.fillText(sp.empty,W/2,H/2);return}
+  const gs=sp.gs,lb=sp.lab||(k=>k),col=k=>PAL[gs.indexOf(k)%PAL.length],m={l:92,r:(sp.y2?72:24),t:34,b:60},pw=W-m.l-m.r,ph=H-m.t-m.b;
+  const hmin=Number.isFinite(sp.ymin),hmax=Number.isFinite(sp.ymax);
+  const clip=f=>{g.save();g.beginPath();g.rect(m.l,m.t,pw,ph);g.clip();f();g.restore()};
+  const frame=(x0,x1,y0,y1,xl,yl,cats,exactX)=>{
+    const px=(x1-x0)*0.05||1,py=(y1-y0)*0.06||1;
+    if(!exactX){x0=(x0>=0&&x0-px<0)?0:x0-px;x1+=px}
+    let ya=hmin?sp.ymin:((y0>=0&&y0-py<0)?0:y0-py),yb=hmax?sp.ymax:y1+py;
+    if(!hmin){const st=tstep(ya,yb);ya=+(Math.floor(ya/st+1e-9)*st).toPrecision(12)}
+    if(!hmax){const st=tstep(ya,yb);yb=+(Math.ceil(yb/st-1e-9)*st).toPrecision(12)}
+    if(yb<=ya)yb=ya+1;
+    y0=ya;y1=yb;
+    const sx=v=>m.l+(v-x0)/(x1-x0)*pw,sy=v=>m.t+ph-(v-y0)/(y1-y0)*ph;
+    g.strokeStyle='#e4e7e1';g.fillStyle='#66737a';g.lineWidth=1;g.textAlign='right';g.textBaseline='middle';
+    let yt=ticks(y0,y1);const st=tstep(y0,y1);
+    if(hmin)yt=yt.filter(v=>Math.abs(v-y0)>st*.4).concat(y0);
+    if(hmax)yt=yt.filter(v=>Math.abs(v-y1)>st*.4).concat(y1);
+    yt.forEach(v=>{const y=sy(v);g.beginPath();g.moveTo(m.l,y);g.lineTo(m.l+pw,y);g.stroke();g.fillText(fmtA(v),m.l-6,y)});
+    g.textAlign='center';g.textBaseline='top';
+    if(cats)cats.forEach((t,i)=>g.fillText(t.length>10?t.slice(0,9)+'…':t,sx(i),m.t+ph+6));
+    else ticks(x0,x1).forEach(v=>{const x=sx(v);g.beginPath();g.moveTo(x,m.t);g.lineTo(x,m.t+ph);g.stroke();g.fillText(fmtA(v),x,m.t+ph+6)});
+    g.strokeStyle='#8a969b';g.strokeRect(m.l,m.t,pw,ph);
+    g.fillStyle='#1f2a2e';if(xl)g.fillText(xl,m.l+pw/2,H-16);
+    g.save();g.translate(10,m.t+ph/2);g.rotate(-Math.PI/2);g.textBaseline='top';g.fillText(yl,0,0);g.restore();
+    return{sx,sy};
+  };
+  const legend=()=>{};
+  if(sp.type==='scatter'){
+    const xs=sp.pts.map(p=>p.x),ys=sp.pts.map(p=>p.y),bl=sp.blocks;
+    const {sx,sy}=frame(bl?bl[0].s-.5:Math.min(...xs),bl?bl[bl.length-1].e+.5:Math.max(...xs),Math.min(...ys),Math.max(...ys),sp.xl,sp.yl,undefined,!!bl);
+    if(bl){
+      g.font='11px sans-serif';g.textAlign='center';g.textBaseline='top';
+      bl.forEach((b,i)=>{
+        const mx=Math.floor((sx(b.e+.5)-sx(b.s-.5))/7),t=lb(b.g);
+        if(mx>=3){g.fillStyle=col(b.g);g.fillText(t.length>mx?t.slice(0,mx-1)+'…':t,sx((b.s+b.e)/2),m.t+ph+24)}
+      });
+      g.font='12px sans-serif';
+    }
+    clip(()=>sp.pts.forEach(p=>{g.fillStyle=col(p.g);g.globalAlpha=.7;g.beginPath();g.arc(sx(p.x),sy(p.y),3.6,0,7);g.fill()}));
+    g.globalAlpha=1;legend();
+  }else if(sp.type==='box'){
+    const all=gs.flatMap(k=>sp.by[k]||[]);
+    const {sx,sy}=frame(-.6,gs.length-.4,Math.min(...all),Math.max(...all),'組別',sp.yl,gs.map(lb));
+    clip(()=>gs.forEach((k,i)=>{
+      const a=sp.by[k]||[];if(!a.length)return;
+      const q1=q(a,.25),md=q(a,.5),q3=q(a,.75),iq=q3-q1,lo=a.find(v=>v>=q1-1.5*iq),hi=[...a].reverse().find(v=>v<=q3+1.5*iq),x=sx(i),w=Math.min(pw/gs.length*.25,40);
+      g.strokeStyle=col(k);g.fillStyle=col(k);g.lineWidth=1.5;
+      g.beginPath();g.moveTo(x,sy(lo));g.lineTo(x,sy(q1));g.moveTo(x,sy(q3));g.lineTo(x,sy(hi));g.moveTo(x-w/2,sy(lo));g.lineTo(x+w/2,sy(lo));g.moveTo(x-w/2,sy(hi));g.lineTo(x+w/2,sy(hi));g.stroke();
+      g.globalAlpha=.18;g.fillRect(x-w,sy(q3),2*w,sy(q1)-sy(q3));g.globalAlpha=1;g.strokeRect(x-w,sy(q3),2*w,sy(q1)-sy(q3));
+      g.lineWidth=3;g.beginPath();g.moveTo(x-w,sy(md));g.lineTo(x+w,sy(md));g.stroke();
+      a.forEach((v,j)=>{g.globalAlpha=.55;g.beginPath();g.arc(x+((j*37)%21-10)/10*w*.7,sy(v),2.6,0,7);g.fill()});g.globalAlpha=1;
+    }));
+    legend();
+  }else{
+    let x1=0,y0=Infinity,y1=-Infinity,z0=Infinity,z1=-Infinity;
+    const cl=l=>l.color||col(l.g),L2=sp.y2?sp.y2.lines:[];
+    sp.lines.forEach(l=>l.p.forEach(([x,y])=>{x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y)}));
+    L2.forEach(l=>l.p.forEach(([x,y])=>{x1=Math.max(x1,x);z0=Math.min(z0,y);z1=Math.max(z1,y)}));
+    const {sx,sy}=frame(0,x1,y0,y1,sp.xl,sp.yl,undefined,true);
+    let sz=null;
+    if(L2.length){
+      const zmn=Number.isFinite(sp.zmin),zmx=Number.isFinite(sp.zmax),pz=(z1-z0)*0.06||1;
+      let za=zmn?sp.zmin:((z0>=0&&z0-pz<0)?0:z0-pz),zb=zmx?sp.zmax:z1+pz;
+      if(!zmn){const st=tstep(za,zb);za=+(Math.floor(za/st+1e-9)*st).toPrecision(12)}
+      if(!zmx){const st=tstep(za,zb);zb=+(Math.ceil(zb/st-1e-9)*st).toPrecision(12)}
+      if(zb<=za)zb=za+1;
+      sz=v=>m.t+ph-(v-za)/(zb-za)*ph;
+      const st=tstep(za,zb);let zt=ticks(za,zb);
+      if(zmn)zt=zt.filter(v=>Math.abs(v-za)>st*.4).concat(za);
+      if(zmx)zt=zt.filter(v=>Math.abs(v-zb)>st*.4).concat(zb);
+      g.strokeStyle='#8a969b';g.fillStyle='#66737a';g.textAlign='left';g.textBaseline='middle';
+      zt.forEach(v=>{const y=sz(v);g.beginPath();g.moveTo(m.l+pw,y);g.lineTo(m.l+pw+4,y);g.stroke();g.fillText(fmtA(v),m.l+pw+7,y)});
+      g.fillStyle='#1f2a2e';g.save();g.translate(W-14,m.t+ph/2);g.rotate(-Math.PI/2);g.textAlign='center';g.textBaseline='top';g.fillText(sp.y2.name,0,0);g.restore();
+    }
+    const path=(p,fy)=>{g.beginPath();p.forEach(([x,y],i)=>i?g.lineTo(sx(x),fy(y)):g.moveTo(sx(x),fy(y)));g.stroke()};
+    clip(()=>{
+      g.lineWidth=1.2;g.setLineDash([]);g.globalAlpha=.75;
+      sp.lines.forEach(l=>{g.strokeStyle=cl(l);path(l.p,sy)});
+      if(sz){g.setLineDash([6,4]);g.globalAlpha=.9;L2.forEach(l=>{g.strokeStyle=cl(l);path(l.p,sz)});g.setLineDash([])}
+    });
+    g.globalAlpha=1;
+    if(sp.legend){
+      g.font='11px sans-serif';
+      const lw=Math.max(...sp.legend.map(t=>g.measureText(t[0]).width))+26,hh=sp.legend.length*16+6,lx=m.l+pw-lw-8,ly=m.t+6;
+      g.fillStyle='rgba(255,255,255,.88)';g.fillRect(lx,ly,lw+4,hh);
+      g.textAlign='left';g.textBaseline='middle';
+      sp.legend.forEach(([t,c],i)=>{g.fillStyle=c;g.fillRect(lx+4,ly+8+i*16-1,12,3);g.fillStyle='#1f2a2e';g.fillText(t,lx+22,ly+8+i*16)});
+      g.font='12px sans-serif';
+    }
+  }
+}
+
+function draw(){
+  const type=$('#ctype').value,box=$('#charts'),grid=type==='gs'||type==='gb';
+  box.innerHTML='';box.className=grid?'grid':'';jobs=[];
+  const gs=groups();
+  const add=(sp,h,key,key2)=>{
+    const cell=document.createElement('div'),c=document.createElement('canvas');
+    cell.appendChild(c);
+    let go;
+    const mkBar=(lbl,k)=>{
+      const r=cfg.yr[k]||{},bar=document.createElement('div');bar.className='yr';
+      bar.innerHTML=`${lbl} 範圍 <input type="number" step="any" placeholder="自動" value="${r.min??''}"> ~ <input type="number" step="any" placeholder="自動" value="${r.max??''}"> <button class="ghost">自動</button>`;
+      cell.appendChild(bar);const [a,b]=bar.querySelectorAll('input');
+      const set=()=>{const p=parseFloat(a.value),z=parseFloat(b.value);cfg.yr[k]={min:isFinite(p)?p:null,max:isFinite(z)?z:null};save();go()};
+      a.onchange=b.onchange=set;bar.querySelector('button').onclick=()=>{a.value=b.value='';set()};
+    };
+    if(key!==undefined)mkBar('Y',key);
+    if(key2!==undefined)mkBar('Y2',key2);
+    box.appendChild(cell);
+    const W=Math.max(320,cell.clientWidth);
+    const spec=sc=>{const r=(key!==undefined&&cfg.yr[key])||{},r2=(key2!==undefined&&cfg.yr[key2])||{};return{gs,lab,...sp,ymin:r.min,ymax:r.max,zmin:r2.min,zmax:r2.max,scale:sc}};
+    go=()=>plot(c,W,h,spec());
+    c.title='雙擊下載 PNG';c.ondblclick=()=>c.toBlob(z=>dl(z,(sp.title||'chart').replace(/[\\\/:*?"<>|]/g,'_')+'.png'));
+    if(!sp.empty)jobs.push({rd:(cv,Wd,sc)=>plot(cv,Wd,h,spec(sc))});
+    go();
+  };
+  if(!cur.rows.length){add({empty:'請先載入資料夾'},300);renderStats();return}
+  if(grid){
+    if(!numCols.length){add({empty:'沒有可用的數值欄位（請勾選要輸出的數值）'},300);renderStats();return}
+    /* X 軸：每個工單佔一個區塊，區塊大小=設定顆數（不足則依實際顆數），依序排列 */
+    const N=+$('#slot').value||0,cnt={},blocks=[],bi={},seen={};
+    cur.rows.forEach(r=>cnt[r[0]]=(cnt[r[0]]||0)+1);
+    let st=1;gs.forEach(g=>{const size=N?Math.max(N,cnt[g]):cnt[g];const b={g,s:st,e:st+size-1};blocks.push(b);bi[g]=b;st+=size});
+    const xs=cur.rows.map(r=>{seen[r[0]]=(seen[r[0]]||0)+1;return bi[r[0]].s+seen[r[0]]-1});
+    numCols.forEach(i=>{
+      let sp;
+      if(type==='gs'){
+        const pts=[];cur.rows.forEach((r,k)=>{if(isNum(r[i]))pts.push({g:r[0],x:xs[k],y:+r[i]})});
+        sp=pts.length?{type:'scatter',title:cur.cols[i],xl:'',yl:cur.cols[i],pts,blocks}:{title:cur.cols[i],empty:'無資料'};
+      }else sp={type:'box',title:cur.cols[i],yl:cur.cols[i],by:Object.fromEntries(gs.map(k=>[k,vals(i,k)]))};
+      add(sp,340,cur.cols[i]);
+    });
+  }else if(type==='xy'){
+    const xi=+$('#cx').value,yi=+$('#cy').value,pts=[];
+    cur.rows.forEach(r=>{if(isNum(r[xi])&&isNum(r[yi]))pts.push({g:r[0],x:+r[xi],y:+r[yi]})});
+    let rr='';
+    if(pts.length>2){const mx=mean(pts.map(p=>p.x)),my=mean(pts.map(p=>p.y));let a=0,b=0,c=0;pts.forEach(p=>{const u=p.x-mx,v=p.y-my;a+=u*v;b+=u*u;c+=v*v});rr=b&&c?'　r='+(a/Math.sqrt(b*c)).toFixed(3):''}
+    add(pts.length?{type:'scatter',title:cur.cols[yi]+' vs '+cur.cols[xi]+rr,xl:cur.cols[xi],yl:cur.cols[yi],pts}:{empty:'X/Y 沒有同時有數值的資料'},440,'xy:'+cur.cols[yi]);
+  }else{
+    const yc=$('#cy').value,y2c=$('#cy2').value,fg=$('#cg').value,dt=(+$('#dt').value||30)/60,n=+$('#cl').value||15;
+    const fl=files.filter(f=>!f.err&&!cfg.gx[f.group]&&(!fg||f.group===fg)&&!cfg.cu[f.key]&&f.hdr.includes(yc));
+    const byCell=fl.length>0&&fl.length<=8,lines=[],l2=[];
+    const prof=(f,name)=>{const j=f.hdr.indexOf(name);if(j<0)return null;const p=[];f.data.forEach((r,i)=>{if(isNum(r[j]))p.push([i*dt,+r[j]])});return p.length?p:null};
+    fl.forEach((f,i)=>{
+      const o={g:f.group,c:f.base.slice(0,n),color:byCell?PAL[i%PAL.length]:undefined};
+      const p=prof(f,yc);if(p)lines.push({...o,p});
+      if(y2c&&y2c!=='無'){const p2=prof(f,y2c);if(p2)l2.push({...o,p:p2})}
+    });
+    const k2=y2c&&y2c!=='無'&&l2.length>0;
+    add(lines.length?{type:'curve',gs:[...new Set(files.map(f=>f.group))],title:yc+' 曲線'+(k2?`（${y2c} 虛線，右軸）`:''),xl:'時間 (min)',yl:yc,lines,y2:k2?{name:y2c,lines:l2}:null,legend:byCell?lines.map(l=>[l.c,l.color]):null}:{empty:'沒有可繪製的電芯（請在上方勾選）'},440,'curve:'+yc,k2?'curve2:'+y2c:undefined);
+  }
+  renderStats();
+}
+
+/* 統計表：列＝組別（工單號碼），欄＝各階段；統計項目可多選 */
+const STATS=[['n','顆數'],['avg','平均'],['sd','標準差'],['min','最小'],['med','中位數'],['max','最大']];
+function stv(k,a){return k==='avg'?mean(a):k==='sd'?sd(a):k==='min'?a[0]:k==='med'?q(a,.5):a[a.length-1]}
+function renderStats(){
+  const gs=groups(),cn=i=>cur.cols[i];
+  $('#statSel').innerHTML=STATS.map(t=>`<label><input type="checkbox" data-s="${t[0]}"${cfg.sk.includes(t[0])?' checked':''}>${t[1]}</label>`).join('');
+  document.querySelectorAll('#statSel input').forEach(c=>c.onchange=()=>{cfg.sk=[...document.querySelectorAll('#statSel input')].filter(x=>x.checked).map(x=>x.dataset.s);save();renderStats()});
+  $('#meanSel').innerHTML=numCols.map(i=>`<label><input type="checkbox" data-i="${i}"${cfg.mx[cn(i)]?'':' checked'}>${esc(cn(i))}</label>`).join('');
+  document.querySelectorAll('#meanSel input').forEach(c=>c.onchange=()=>{cfg.mx[cn(+c.dataset.i)]=!c.checked;save();renderStats()});
+  const pick=numCols.filter(i=>!cfg.mx[cn(i)]),sk=STATS.filter(t=>cfg.sk.includes(t[0])),multi=sk.length>1;
+  const cols=['組別(工單號碼)',...(multi?['統計']:[]),...pick.map(cn)],rows=[];
+  gs.forEach(g=>sk.forEach(t=>rows.push([lab(g),...(multi?[t[1]]:[]),...pick.map(i=>{const a=vals(i,g);return a.length?(t[0]==='n'?a.length:fmt(stv(t[0],a))):''})])));
+  meanData={cols,rows};
+  $('#mean').innerHTML=rows.length?'<tr>'+cols.map(c=>`<th>${esc(c)}</th>`).join('')+'</tr>'+rows.map(r=>'<tr>'+r.map(v=>`<td${isNum(v)?' class="n"':''}>${esc(v)}</td>`).join('')+'</tr>').join(''):'';
+}
+
+/* ---------- 匯出 ---------- */
+const tsv=(sep)=>[cur.cols,...cur.rows].map(r=>r.slice(0,cur.nTable||r.length).map(v=>sep==='\t'?String(v).replace(/[\t\n]/g,' '):/[",\n]/.test(v)?'"'+String(v).replace(/"/g,'""')+'"':v).join(sep)).join('\n');
+function dl(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}
+$('#csv').onclick=()=>dl(new Blob(['\uFEFF'+tsv(',')],{type:'text/csv'}),'fud_summary.csv');
+$('#copy').onclick=()=>{const t=document.createElement('textarea');t.value=tsv('\t');document.body.appendChild(t);t.select();document.execCommand('copy');t.remove();$('#tinfo').textContent='已複製到剪貼簿，可直接貼進 Excel。'};
+/* ---------- 一鍵輸出 PPT（純 JS 產生 .pptx，不需任何函式庫） ---------- */
+const crcT=(()=>{const t=[];for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+const crc32=u=>{let c=0xFFFFFFFF;for(let i=0;i<u.length;i++)c=crcT[(c^u[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0};
+function zip(entries){
+  const enc=new TextEncoder(),parts=[],cen=[];let off=0;
+  entries.forEach(e=>{
+    const nm=enc.encode(e.name),crc=crc32(e.data),sz=e.data.length;
+    const lh=new DataView(new ArrayBuffer(30));
+    lh.setUint32(0,0x04034b50,true);lh.setUint16(4,20,true);lh.setUint16(6,0x0800,true);lh.setUint16(12,0x21,true);
+    lh.setUint32(14,crc,true);lh.setUint32(18,sz,true);lh.setUint32(22,sz,true);lh.setUint16(26,nm.length,true);
+    parts.push(new Uint8Array(lh.buffer),nm,e.data);
+    const ch=new DataView(new ArrayBuffer(46));
+    ch.setUint32(0,0x02014b50,true);ch.setUint16(4,20,true);ch.setUint16(6,20,true);ch.setUint16(8,0x0800,true);ch.setUint16(14,0x21,true);
+    ch.setUint32(16,crc,true);ch.setUint32(20,sz,true);ch.setUint32(24,sz,true);ch.setUint16(28,nm.length,true);ch.setUint32(42,off,true);
+    cen.push(new Uint8Array(ch.buffer),nm);
+    off+=30+nm.length+sz;
+  });
+  const cs=cen.reduce((a,b)=>a+b.length,0),end=new DataView(new ArrayBuffer(22));
+  end.setUint32(0,0x06054b50,true);end.setUint16(8,entries.length,true);end.setUint16(10,entries.length,true);end.setUint32(12,cs,true);end.setUint32(16,off,true);
+  return new Blob([...parts,...cen,new Uint8Array(end.buffer)],{type:'application/vnd.openxmlformats-officedocument.presentationml.presentation'});
+}
+function buildPptx(imgs,per){
+  const cols=per===1?1:2,rows=per===4?2:1,SW=12192000,SH=6858000,M=300000,G=150000;
+  const cw=(SW-2*M-(cols-1)*G)/cols,ch=(SH-2*M-(rows-1)*G)/rows,nS=Math.ceil(imgs.length/per);
+  const NS='xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"';
+  const X='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n',R='http://schemas.openxmlformats.org/officeDocument/2006/relationships/';
+  const grp='<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>';
+  const rels=a=>X+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+a.map(([id,t,tg])=>`<Relationship Id="${id}" Type="${R}${t}" Target="${tg}"/>`).join('')+'</Relationships>';
+  const te=new TextEncoder(),F=[],E=(name,str)=>F.push({name,data:te.encode(str)});
+  const ov=(pn,ct)=>`<Override PartName="${pn}" ContentType="application/vnd.openxmlformats-officedocument.${ct}+xml"/>`;
+  let slides='';for(let i=1;i<=nS;i++)slides+=ov(`/ppt/slides/slide${i}.xml`,'presentationml.slide');
+  E('[Content_Types].xml',X+'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/>'+
+    ov('/ppt/presentation.xml','presentationml.presentation.main')+ov('/ppt/slideMasters/slideMaster1.xml','presentationml.slideMaster')+ov('/ppt/slideLayouts/slideLayout1.xml','presentationml.slideLayout')+ov('/ppt/theme/theme1.xml','theme')+slides+'</Types>');
+  E('_rels/.rels',rels([['rId1','officeDocument','ppt/presentation.xml']]));
+  let ids='',pr=[['rId1','slideMaster','slideMasters/slideMaster1.xml']];
+  for(let i=1;i<=nS;i++){ids+=`<p:sldId id="${255+i}" r:id="rId${i+1}"/>`;pr.push([`rId${i+1}`,'slide',`slides/slide${i}.xml`])}
+  pr.push([`rId${nS+2}`,'theme','theme/theme1.xml']);
+  E('ppt/presentation.xml',X+`<p:presentation ${NS}><p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst><p:sldIdLst>${ids}</p:sldIdLst><p:sldSz cx="${SW}" cy="${SH}"/><p:notesSz cx="6858000" cy="9144000"/></p:presentation>`);
+  E('ppt/_rels/presentation.xml.rels',rels(pr));
+  E('ppt/slideMasters/slideMaster1.xml',X+`<p:sldMaster ${NS}><p:cSld><p:spTree>${grp}</p:spTree></p:cSld><p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/><p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1"/></p:sldLayoutIdLst></p:sldMaster>`);
+  E('ppt/slideMasters/_rels/slideMaster1.xml.rels',rels([['rId1','slideLayout','../slideLayouts/slideLayout1.xml'],['rId2','theme','../theme/theme1.xml']]));
+  E('ppt/slideLayouts/slideLayout1.xml',X+`<p:sldLayout ${NS} type="blank"><p:cSld name="Blank"><p:spTree>${grp}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>`);
+  E('ppt/slideLayouts/_rels/slideLayout1.xml.rels',rels([['rId1','slideMaster','../slideMasters/slideMaster1.xml']]));
+  const sl='<a:solidFill><a:schemeClr val="phClr"/></a:solidFill>',ln=w=>`<a:ln w="${w}">${sl}</a:ln>`,es='<a:effectStyle><a:effectLst/></a:effectStyle>';
+  E('ppt/theme/theme1.xml',X+`<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Office"><a:themeElements><a:clrScheme name="Office"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="44546A"/></a:dk2><a:lt2><a:srgbClr val="E7E6E6"/></a:lt2><a:accent1><a:srgbClr val="4472C4"/></a:accent1><a:accent2><a:srgbClr val="ED7D31"/></a:accent2><a:accent3><a:srgbClr val="A5A5A5"/></a:accent3><a:accent4><a:srgbClr val="FFC000"/></a:accent4><a:accent5><a:srgbClr val="5B9BD5"/></a:accent5><a:accent6><a:srgbClr val="70AD47"/></a:accent6><a:hlink><a:srgbClr val="0563C1"/></a:hlink><a:folHlink><a:srgbClr val="954F72"/></a:folHlink></a:clrScheme><a:fontScheme name="Office"><a:majorFont><a:latin typeface="Calibri"/><a:ea typeface=""/><a:cs typeface=""/></a:majorFont><a:minorFont><a:latin typeface="Calibri"/><a:ea typeface=""/><a:cs typeface=""/></a:minorFont></a:fontScheme><a:fmtScheme name="Office"><a:fillStyleLst>${sl}${sl}${sl}</a:fillStyleLst><a:lnStyleLst>${ln(6350)}${ln(12700)}${ln(19050)}</a:lnStyleLst><a:effectStyleLst>${es}${es}${es}</a:effectStyleLst><a:bgFillStyleLst>${sl}${sl}${sl}</a:bgFillStyleLst></a:fmtScheme></a:themeElements></a:theme>`);
+  let n=0;
+  for(let s=0;s<nS;s++){
+    let pics='',rl=[['rId1','slideLayout','../slideLayouts/slideLayout1.xml']];
+    imgs.slice(s*per,s*per+per).forEach((im,k)=>{
+      n++;E(`ppt/media/image${n}.png`,'');F[F.length-1].data=im.b;
+      const ar=im.w/im.h;let ew=cw,eh=ew/ar;if(eh>ch){eh=ch;ew=eh*ar}
+      const x=Math.round(M+(k%cols)*(cw+G)+(cw-ew)/2),y=Math.round(M+Math.floor(k/cols)*(ch+G)+(ch-eh)/2);
+      rl.push([`rId${k+2}`,'image',`../media/image${n}.png`]);
+      pics+=`<p:pic><p:nvPicPr><p:cNvPr id="${k+2}" name="Chart ${n}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rId${k+2}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${Math.round(ew)}" cy="${Math.round(eh)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`;
+    });
+    E(`ppt/slides/slide${s+1}.xml`,X+`<p:sld ${NS}><p:cSld><p:spTree>${grp}${pics}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`);
+    E(`ppt/slides/_rels/slide${s+1}.xml.rels`,rels(rl));
+  }
+  return zip(F);
+}
+async function exportPPT(){
+  if(!jobs.length){alert('目前沒有圖表可輸出');return}
+  const b=$('#ppt');b.disabled=true;b.textContent='輸出中…';
+  try{
+    const imgs=[];
+    for(const j of jobs){
+      const c=document.createElement('canvas');j.rd(c,640,2);
+      const bl=await new Promise(r=>c.toBlob(r,'image/png'));
+      imgs.push({w:c.width,h:c.height,b:new Uint8Array(await bl.arrayBuffer())});
+    }
+    dl(buildPptx(imgs,+$('#ppn').value||4),'fud_charts.pptx');
+  }catch(e){alert('輸出失敗：'+e.message)}
+  b.disabled=false;b.textContent='一鍵輸出 PPT';
+}
+
+/* ---------- 暫存檔：保存目前所有資料與設定（gzip 壓縮），下次載入即可還原 ---------- */
+async function saveSession(){
+  if(!files.length){alert('目前沒有資料可儲存');return}
+  const o={v:1,files:files.map(f=>({key:f.key,path:f.path,group:f.group,base:f.base,text:f.text})),cfg,calcs,sel:[...sel],dt:$('#dt').value,cl:$('#cl').value,utbl:$('#utbl').checked,ctype:$('#ctype').value};
+  const str=JSON.stringify(o);
+  let blob=new Blob([str]);
+  try{if(window.CompressionStream)blob=await new Response(blob.stream().pipeThrough(new CompressionStream('gzip'))).blob()}catch(e){blob=new Blob([str])}
+  dl(blob,'化成暫存檔_'+new Date().toISOString().slice(0,10)+'.fudsess');
+}
+async function loadSession(file){
+  try{
+    const buf=await file.arrayBuffer(),u=new Uint8Array(buf);
+    let txt;
+    if(u[0]===0x1f&&u[1]===0x8b)txt=await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+    else txt=new TextDecoder().decode(buf);
+    const o=JSON.parse(txt);
+    if(!o||!Array.isArray(o.files))throw new Error('檔案格式不正確');
+    const have=new Set(files.map(f=>f.key));
+    o.files.forEach(f=>{if(!have.has(f.key))files.push(f)});
+    Object.assign(cfg,o.cfg||{});calcs=o.calcs||[];sel=new Set(o.sel||[]);
+    $('#dt').value=o.dt||30;$('#cl').value=o.cl||15;$('#utbl').checked=!!o.utbl;if(o.ctype)$('#ctype').value=o.ctype;
+    $('#slot').value=cfg.slot||'';
+    migIr();irDirty=true;stageSig='';gSig='';save();renderCalc();reparse();refresh(true);
+  }catch(e){alert('暫存檔讀取失敗：'+e.message)}
+}
+$('#addc').onclick=()=>{calcs.push({n:'',f:''});renderCalc()};
+$('#slot').value=cfg.slot||'';
+$('#slot').onchange=()=>{cfg.slot=$('#slot').value;save();draw()};
+$('#utbl').onchange=()=>refresh(false);
+$('#thb').onclick=()=>{const p=$('#thp');p.hidden=!p.hidden;$('#thb').textContent=p.hidden?'展開 ▸':'收合 ▾'};
+$('#copyMean').onclick=()=>{const t=document.createElement('textarea');t.value=[meanData.cols,...meanData.rows].map(r=>r.join('\t')).join('\n');document.body.appendChild(t);t.select();document.execCommand('copy');t.remove();$('#copyMean').textContent='已複製';setTimeout(()=>$('#copyMean').textContent='複製統計表',1500)};
+$('#ppt').onclick=exportPPT;$('#sv').onclick=saveSession;
+$('#ld').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(f)await loadSession(f)};
+renderCalc();
+refresh(true);
+</script>
+</body>
+</html>
